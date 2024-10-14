@@ -1,14 +1,43 @@
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+const fs = require('fs');
+const path = require('path');
 
 // Use stealth plugin to evade detection
 puppeteer.use(StealthPlugin());
 
 class ITVChecker {
-    constructor(creds, proxy = null, headless = true) {
+    constructor(creds, proxy = null, headless = true, artifactDir = null) {
         this.proxy = proxy;
         this.headless = headless;
         this.creds = creds;
+        this.artifactDir = artifactDir;
+        this.screenshotCounter = 1;
+    }
+
+    async initArtifacts() {
+        // Create artifact directory if not already existing
+        if (!fs.existsSync(this.artifactDir)) {
+            fs.mkdirSync(this.artifactDir, { recursive: true });
+        }
+
+        // Save metadata
+        const metadata = {
+            proxy: this.proxy,
+            headless: this.headless,
+            creds: { user: this.creds.user }, // Save only username for privacy
+            timestamp: new Date().toISOString()
+        };
+
+        fs.writeFileSync(path.join(this.artifactDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
+    }
+
+    async takeScreenshot(page, stepName = null) {
+        // Screenshot file name based on step name or counter
+        const screenshotName = stepName ? `${this.screenshotCounter}_${stepName}.png` : `step_${this.screenshotCounter}.png`;
+        const screenshotPath = path.join(this.artifactDir, screenshotName);
+        await page.screenshot({ path: screenshotPath });
+        this.screenshotCounter++;
     }
 
     async checkAvailability() {
@@ -55,26 +84,38 @@ class ITVChecker {
         }
 
         try {
+          
             // Go to ITV website
             await page.goto('https://www.itv.com', { waitUntil: 'networkidle2' });
 
+            // Take screenshot after loading ITV homepage
+            await this.takeScreenshot(page, 'itv_homepage');
+
             // Accept cookies
-            await page.waitForSelector('#cassie_accept_all_pre_banner',{ visible: true });
+            await page.waitForSelector('#cassie_accept_all_pre_banner', { visible: true });
             await page.click('#cassie_accept_all_pre_banner');
+
+            // Take screenshot after accepting cookies
+            await this.takeScreenshot(page, 'cookies_accepted');
 
             // Navigate to sign-in page
             await page.goto('https://www.itv.com/watch/user/signin', {
                 waitUntil: 'networkidle2',
             });
 
+            // Take screenshot after loading sign-in page
+            await this.takeScreenshot(page, 'signin_page');
+
             // Enter credentials
-            await page.waitForSelector('#email',{ visible: true });
+            await page.waitForSelector('#email', { visible: true });
             await page.type('#email', this.creds.user);
+            await this.takeScreenshot(page, 'email_entered');
             await page.click('button[data-testid="signInButton"]');
 
             // Wait for password field and enter the password
-            await page.waitForSelector('input[type="password"]',{ visible: true });
+            await page.waitForSelector('input[type="password"]', { visible: true });
             await page.type('input[type="password"]', this.creds.password);
+            await this.takeScreenshot(page, 'password_entered');
             await page.click('button[data-testid="signInButton"]');
 
             // Wait for login to complete
@@ -83,13 +124,21 @@ class ITVChecker {
             // Navigate to Watch Live ITV page
             await page.goto('https://www.itv.com/watch', { waitUntil: 'networkidle2' });
 
+            // Take screenshot after navigating to watch live
+            await this.takeScreenshot(page, 'watch_live_page');
+
             // Check ITV1 availability
             const itv1Available = await this.checkChannelAvailability(page, 'itv', 'watch-live-itv');
             // Wait for a moment to check availability
             await new Promise(r => setTimeout(r, 10000));
+
+            // Take screenshot after navigating to watch live
+            await this.takeScreenshot(page, 'watch_live_page2');
+
             // Check ITV2 availability
             const itv2Available = await this.checkChannelAvailability(page, 'itv2', 'watch-live-itv2');
 
+            // Close the browser
             await browser.close();
 
             // Return availability status
@@ -103,11 +152,11 @@ class ITVChecker {
     async checkChannelAvailability(page, channelId, watchId) {
         try {
             // Wait for and click the ITV channel
-            await page.waitForSelector(`#${channelId}`,{ visible: true });
+            await page.waitForSelector(`#${channelId}`, { visible: true });
             await page.click(`#${channelId}`);
 
             // Wait for the watch live button
-            await page.waitForSelector(`#${watchId}`,{ visible: true });
+            await page.waitForSelector(`#${watchId}`, { visible: true });
             await page.click(`#${watchId}`);
 
             // Wait for a moment to check availability
@@ -116,16 +165,17 @@ class ITVChecker {
             // Check for "not available" modal, no content image, or error code 01-01
             const notAvailable = await page.evaluate(() => document.body.textContent.includes("Sorry, this show isn't available"));
             const noContentImageVisible = await page.evaluate(() => !!document.querySelector('img[src="https://app.10ft.itv.com/itvstatic/assets/images/hades/itvx-no-content.png"]'));
-            const errorCodeVisible = await page.evaluate(() => !!document.querySelector('p.cp_dialog-footer__message__text') && document.querySelector('p.cp_dialog-footer__message__text').textContent.includes('Error code: 10-06'));
+            const errorCodeVisible = await page.evaluate(() => !!document.querySelector('p.cp_dialog-footer__message__text') && document.querySelector('p.cp_dialog-footer__message__text').textContent.includes('Error code: 01-01'));
 
             if (notAvailable || noContentImageVisible || errorCodeVisible) {
+                // Take screenshot after navigating to watch live
+                await this.takeScreenshot(page, 'error');
                 return false;
             }
-
-
+            await this.takeScreenshot(page, 'success');
             return true;
         } catch (error) {
-            console.log(error)
+            console.log(error);
             return false;
         }
     }
@@ -154,8 +204,13 @@ const creds = {
 
 // Main function
 (async () => {
-    // Check availability with or without proxy
-    const checker = new ITVChecker(creds, proxy, headless);
+    // Generate artifact directory name
+    const timestamp = new Date().toISOString().replace(/[-:.]/g, "_");
+    const artifactDir = `artifacts/${timestamp}_proxy-${proxy ? 'true' : 'false'}_headless-${headless}`;
+
+    // Check availability with or without proxy and headless mode
+    const checker = new ITVChecker(creds, proxy, headless, artifactDir);
+    await checker.initArtifacts();  // Initialize artifacts (create folder and save metadata)
     const result = await checker.checkAvailability();
 
     // Output True or False based on availability
