@@ -48,6 +48,7 @@ The script accepts two optional command-line arguments:
 
     --proxy: Specify a proxy server, e.g., --proxy=username:password@proxy.com:8080. If no proxy is provided, the script will run without a proxy.
     --headless: Set whether to run in headless mode or not (default is true). Example: --headless=false.
+    --waitTime: Set a custom wait time (in seconds) for delays between actions. Default is 10 seconds. Example: --waitTime=15 for 15 seconds of delay.
 
 Example 1: Running Without Proxy
 
@@ -59,7 +60,7 @@ Example 2: Running with Proxy and Visible Browser
 
 bash
 
-node main.js --proxy=username:password@proxy.com:8080 --headless=false
+node main.js --proxy=username:password@proxy.com:8080 --headless=false --waitTime=15
 
 Proxy Format
 
