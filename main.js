@@ -7,12 +7,13 @@ const path = require('path');
 puppeteer.use(StealthPlugin());
 
 class ITVChecker {
-    constructor(creds, proxy = null, headless = true, artifactDir = null) {
+    constructor(creds, proxy = null, headless = true, artifactDir = null, waitTime = 10000) {
         this.proxy = proxy;
         this.headless = headless;
         this.creds = creds;
         this.artifactDir = artifactDir;
         this.screenshotCounter = 1;
+        this.waitTime = waitTime; // Default wait time in milliseconds
     }
 
     async initArtifacts() {
@@ -21,11 +22,12 @@ class ITVChecker {
             fs.mkdirSync(this.artifactDir, { recursive: true });
         }
 
-        // Save metadata
+        // Save metadata including wait time
         const metadata = {
             proxy: this.proxy,
             headless: this.headless,
             creds: { user: this.creds.user }, // Save only username for privacy
+            waitTime: this.waitTime,
             timestamp: new Date().toISOString()
         };
 
@@ -84,7 +86,6 @@ class ITVChecker {
         }
 
         try {
-          
             // Go to ITV website
             await page.goto('https://www.itv.com', { waitUntil: 'networkidle2' });
 
@@ -130,7 +131,7 @@ class ITVChecker {
             // Check ITV1 availability
             const itv1Available = await this.checkChannelAvailability(page, 'itv', 'watch-live-itv');
             // Wait for a moment to check availability
-            await new Promise(r => setTimeout(r, 10000));
+            await new Promise(r => setTimeout(r, this.waitTime));
 
             // Take screenshot after navigating to watch live
             await this.takeScreenshot(page, 'watch_live_page2');
@@ -160,7 +161,7 @@ class ITVChecker {
             await page.click(`#${watchId}`);
 
             // Wait for a moment to check availability
-            await new Promise(r => setTimeout(r, 10000));
+            await new Promise(r => setTimeout(r, this.waitTime));
 
             // Check for "not available" modal, no content image, or error code 01-01
             const notAvailable = await page.evaluate(() => document.body.textContent.includes("Sorry, this show isn't available"));
@@ -172,6 +173,7 @@ class ITVChecker {
                 await this.takeScreenshot(page, 'error');
                 return false;
             }
+
             await this.takeScreenshot(page, 'success');
             return true;
         } catch (error) {
@@ -185,14 +187,18 @@ class ITVChecker {
 const args = process.argv.slice(2);
 let proxy = null;
 let headless = true;
+let waitTime = 10000; // Default wait time (10 seconds)
 
-// Parse arguments for --proxy= and --headless=
+// Parse arguments for --proxy=, --headless=, and --waitTime=
 args.forEach(arg => {
     if (arg.startsWith('--proxy=')) {
         proxy = arg.split('=')[1]; // Get the proxy value
     }
     if (arg.startsWith('--headless=')) {
         headless = arg.split('=')[1] === 'true'; // Convert to boolean
+    }
+    if (arg.startsWith('--waitTime=')) {
+        waitTime = parseInt(arg.split('=')[1]) * 1000; // Convert to milliseconds
     }
 });
 
@@ -209,7 +215,7 @@ const creds = {
     const artifactDir = `artifacts/${timestamp}_proxy-${proxy ? 'true' : 'false'}_headless-${headless}`;
 
     // Check availability with or without proxy and headless mode
-    const checker = new ITVChecker(creds, proxy, headless, artifactDir);
+    const checker = new ITVChecker(creds, proxy, headless, artifactDir, waitTime);
     await checker.initArtifacts();  // Initialize artifacts (create folder and save metadata)
     const result = await checker.checkAvailability();
 
