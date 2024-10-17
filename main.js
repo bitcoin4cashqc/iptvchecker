@@ -165,7 +165,7 @@ class ITVChecker {
             // Check for "not available" modal, no content image, or error code 01-01
             const notAvailable = await page.evaluate(() => document.body.textContent.includes("Sorry, this show isn't available"));
             const noContentImageVisible = await page.evaluate(() => !!document.querySelector('img[src="https://app.10ft.itv.com/itvstatic/assets/images/hades/itvx-no-content.png"]'));
-            const errorCodeVisible = await page.evaluate(() => !!document.querySelector('p.cp_dialog-footer__message__text') && document.querySelector('p.cp_dialog-footer__message__text').textContent.includes('Error code: 01-01'));
+            const errorCodeVisible = await page.evaluate(() => !!document.querySelector('p.cp_dialog-footer__message__text') && document.querySelector('p.cp_dialog-footer__message__text').textContent.includes('Error code: 10-06'));
 
             if (notAvailable || noContentImageVisible || errorCodeVisible) {
                 // Take screenshot after navigating to watch live
